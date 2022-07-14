@@ -1,0 +1,124 @@
+RBAC(Role Based Access Control) 
+After begin with the part of code there are many concepts we should know:
+For RBAC it’s all about giving a role to the user
+RBAC model:
+User -> role -> permission -> capability
+And to know every user can have many roles and each role can have many permissions and each permission can have many capability.
+After creating the user module – we can created by the command <nest g resource users>. we’re going to add the role to the entity:
+export class User {
+    roles: string[];
+
+we’re creating under folder entity an enum file called “user.enum.ts” the role of this file is to enum the roles we want. In this example we’re going to use 2 types of roles: customer and admin
+export enum Role{
+    CUSTOMER = "customer",
+    ADMIN = "admin",
+}
+
+If we said that the admin can POST user, GET user/id, GET user, PATCH user, DELETE user. And the customer can only GET users and GET user/id.
+So for do that we should go to the controller and decorate the http verb with the role by using the @SetMetaData() decorator 
+Hint: @SetMetaData() This metadata supplies our missing role data, which a smart guard needs to make decisions. It’s a function that takes metadata key (“roles”) and an array (the roles)
+
+
+  @Post()
+  @SetMetadata('roles', Role.ADMIN) //<------------------
+  create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.create(createUserDto);
+  }
+
+But it’s not recommended to use @SetMetaData like that so let’s customize a role decorator roles.decorator.ts 
+The roles decorator @Role() take an array of the roles and return the setMetaData function and don’t forget to put the array in the parameter
+//role.decorator.ts
+import { SetMetadata } from "@nestjs/common";
+
+export const Roles = (...roles: string[]) => SetMetadata('roles', roles);
+
+@Post()
+  @Roles([Role.ADMIN, Role.CUSTOMER])//<------------------
+  create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.create(createUserDto);
+  }
+
+But there are a peace missing instead of initialize the roles array in the parameter of the Roles function as string let initialize it as Role the enum of the roles string
+
+//role.decorator.ts
+import { SetMetadata } from "@nestjs/common";
+
+export const Roles = (...roles: Role[]) => SetMetadata('roles', roles);
+
+it seems we are very close but it’s not the end for now we have the user, initialed the roles and we have the capability which is our http request and codes so to handle the permission we need the guard
+
+Hint: the guard is a class annotated with injectable and implements the canActive interface which return a Boolean depend on the status
+So to start let’s create the guard folder that contain the two files: roles.guard.ts (when all work is) and index.ts (that export all roles.guard functions). 
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { Observable } from 'rxjs';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+    constructor(private reflector: Reflector){}
+
+    canActivate(
+    context: ExecutionContext,
+  ): boolean | Promise<boolean> | Observable<boolean> {
+    
+    return false;
+  }
+}
+
+Plus provide it in the providers as globally to use on all the application.
+providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard, --this is the function we created in roles.guard
+    }
+  ],
+
+And now let’s create the logic of the roles.guard.
+So to be simple our work compose into 2 parts: check what is the require role and check if does the current user making the request have those required role(s)
+Hint: the reflactor -- implemented from @nest/core -- it’s a class that read the content of the metadeta 
+
+//what is the require role?
+    const requreRoles = this.reflector.getAllAndOverride<Role[]>('roles', [
+    context.getHandler(),
+    context.getClass(), // it's trying pull in the metadeta for the specific context 
+])
+    const { user } = context.switchToHttp().getRequest();//get the user 
+
+and for the capability that doesn’t have a role decorator we should let him pass
+if (!requireRoles) return true;
+
+change the return to receive the result
+        //does the current user making the request have those required role(s)
+        return requireRoles.some((role)=>user.roles.includes(role));
+
+
+
+the complete guard code 😊
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { Observable } from 'rxjs';
+import { Role } from '../role.enum';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+    constructor(private reflector: Reflector) { }
+
+    canActivate(
+        context: ExecutionContext,
+    ): boolean | Promise<boolean> | Observable<boolean> {
+        //what is the require role?
+        const requireRoles = this.reflector.getAllAndOverride<Role[]>('roles', [
+            context.getHandler(),
+            context.getClass(), // it's trying pull in the metadeta for the specific context 
+        ]);
+
+        if (!requireRoles) return true;
+
+        const { user } = context.switchToHttp().getRequest();//get the user 
+
+        //does the current user making the request have those required role(s)
+        return requireRoles.some((role)=>user.roles.includes(role));
+    }
+}
+
