@@ -3,8 +3,8 @@ After begin with the part of code there are many concepts we should know:
 For RBAC it’s all about giving a role to the user
 RBAC model:
 User -> role -> permission -> capability
-And to know every user can have many roles and each role can have many permissions and each permission can have many capability.
-After creating the user module – we can created by the command <nest g resource users>. we’re going to add the role to the entity:
+And to know every user can have many roles and each role can have many permissions and each permission can have many capabilities.
+After creating the user module – we can create by the command <nest g resource users> -. we’re going to add the role to the entity:
 export class User {
     roles: string[];
 
@@ -75,7 +75,7 @@ providers: [
   ],
 
 And now let’s create the logic of the roles.guard.
-So to be simple our work compose into 2 parts: check what is the require role and check if does the current user making the request have those required role(s)
+So to be simple, our work compose into 2 parts: check what is the require role and check if does the current user making the request have those required role(s)
 Hint: the reflactor -- implemented from @nest/core -- it’s a class that read the content of the metadeta 
 
 //what is the require role?
@@ -107,6 +107,7 @@ export class RolesGuard implements CanActivate {
     canActivate(
         context: ExecutionContext,
     ): boolean | Promise<boolean> | Observable<boolean> {
+
         //what is the require role?
         const requireRoles = this.reflector.getAllAndOverride<Role[]>('roles', [
             context.getHandler(),
@@ -122,3 +123,8 @@ export class RolesGuard implements CanActivate {
     }
 }
 
+Summary
+First of all in the logic of the RBAC there are 4 topics: user – role – permission – capability 
+The process start by adding the roles (datatype: array) to the user schema.
+Second we initialize the role by create a new decorator contain the setMetaData function and by that the role is ready 
+Third go with the guard file that build on the canActivate function which return a Boolean to be the passing permission, the logic is compose on get the require role (role of the capacity -http verb and functions-) and if the function doesn’t have a role let the user pass  regardless of his role. Next get the user who want to pass. And finally check if the roles of the user include the require role and return the result
